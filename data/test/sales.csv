@@ -1,0 +1,7 @@
+product_name,region,quantity,revenue,order_date
+iPhone,North,10,1000,2026-01-10
+MacBook,South,5,2500,2026-01-15
+AirPods,East,20,1500,2026-02-03
+iPhone,West,15,1500,2026-02-10
+MacBook,North,8,4000,2026-02-20
+AirPods,South,25,1875,2026-03-01
