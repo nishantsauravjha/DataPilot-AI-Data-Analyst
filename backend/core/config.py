@@ -66,6 +66,14 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 120
 
     # --------------------------------------------------------
+    # Qdrant
+    # --------------------------------------------------------
+
+    QDRANT_URL: str = "http://127.0.0.1:6333"
+    QDRANT_API_KEY: str | None = None
+    QDRANT_COLLECTION: str = "datapilot_knowledge"
+
+    # --------------------------------------------------------
     # Existing database connection compatibility
     # --------------------------------------------------------
 

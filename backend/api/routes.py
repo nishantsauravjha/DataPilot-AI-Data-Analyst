@@ -11,6 +11,11 @@ from backend.services.query_service import (
 )
 from backend.sql.generator import generate_sql
 
+from backend.orchestration.query_orchestrator import (
+    QueryOrchestrator,
+)
+
+query_orchestrator = QueryOrchestrator()
 
 router = APIRouter(
     prefix="/api/v1",
@@ -124,16 +129,27 @@ def query_dataset(
     request: QueryRequest,
 ):
     """
-    Convert a natural-language question into SQL,
-    validate it, execute it, and return the result.
+    Unified DataPilot query endpoint.
 
     Pipeline:
+
         Question
-        -> Schema Retrieval
-        -> LLM SQL Generation
-        -> SQL Validation
-        -> PostgreSQL
-        -> Result
+            ↓
+        Query Router
+            ↓
+        ┌───────────────┬───────────────┐
+        │               │               │
+    Structured         RAG           Hybrid
+        │               │               │
+        └───────────────┴───────────────┘
+                        ↓
+                 Final Answer
+                        +
+                 Analysis
+                        +
+                 Visualization
+                        +
+                 Citations
     """
 
     question = request.question.strip()
@@ -145,58 +161,27 @@ def query_dataset(
         )
 
     try:
-        # ----------------------------------------------------
-        # 1. Retrieve database schema
-        # ----------------------------------------------------
 
-        schema = get_latest_schema_context()
-
-        if not schema:
-            raise HTTPException(
-                status_code=404,
-                detail=(
-                    "No active dataset is available. "
-                    "Upload a CSV or Excel file first."
-                ),
-            )
-
-        # ----------------------------------------------------
-        # 2. Generate SQL using the LLM
-        # ----------------------------------------------------
-
-        generated = generate_sql(
-            question=question,
-            schema=schema,
+        return query_orchestrator.query(
+            question
         )
 
-        # ----------------------------------------------------
-        # 3. Execute validated SQL
-        #
-        # execute_dataset_query() internally uses
-        # execute_query(), which calls validate_sql().
-        # ----------------------------------------------------
+    except LookupError as exc:
 
-        result = execute_dataset_query(
-            generated["sql"]
-        )
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
 
-        # ----------------------------------------------------
-        # 4. Return complete response
-        # ----------------------------------------------------
+    except ValueError as exc:
 
-        return {
-            "success": True,
-            "question": question,
-            "sql": generated["sql"],
-            "explanation": generated["explanation"],
-            "confidence": generated["confidence"],
-            "result": result,
-        }
-
-    except HTTPException:
-        raise
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
 
     except Exception as exc:
+
         raise HTTPException(
             status_code=500,
             detail=f"Query execution failed: {exc}",

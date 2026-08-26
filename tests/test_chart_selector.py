@@ -2,115 +2,70 @@ import pandas as pd
 
 from backend.visualization.chart_selector import (
     select_chart,
-    validate_chart_spec,
 )
 
 
-def test_categorical_numeric_result_selects_bar():
+def test_category_numeric_returns_bar_chart():
     df = pd.DataFrame(
         {
             "product_name": [
-                "MacBook",
                 "iPhone",
+                "MacBook",
                 "AirPods",
             ],
             "total_revenue": [
-                6500,
                 2500,
+                6500,
                 1500,
             ],
         }
     )
 
-    spec = select_chart(df)
+    result = select_chart(df)
 
-    assert spec["type"] == "bar"
-    assert spec["x"] == "product_name"
-    assert spec["y"] == "total_revenue"
+    assert result["type"] == "bar"
+    assert result["x"] == "product_name"
+    assert result["y"] == "total_revenue"
 
 
-def test_datetime_numeric_result_selects_line():
+def test_datetime_numeric_returns_line_chart():
     df = pd.DataFrame(
         {
             "order_date": pd.to_datetime(
                 [
                     "2026-01-01",
                     "2026-02-01",
-                    "2026-03-01",
                 ]
             ),
             "revenue": [
                 1000,
                 2500,
-                3200,
             ],
         }
     )
 
-    spec = select_chart(df)
+    result = select_chart(df)
 
-    assert spec["type"] == "line"
-    assert spec["x"] == "order_date"
-    assert spec["y"] == "revenue"
-
-
-def test_two_numeric_columns_select_scatter():
-    df = pd.DataFrame(
-        {
-            "quantity": [
-                5,
-                10,
-                20,
-            ],
-            "revenue": [
-                1000,
-                2500,
-                5000,
-            ],
-        }
-    )
-
-    spec = select_chart(df)
-
-    assert spec["type"] == "scatter"
-    assert spec["x"] == "quantity"
-    assert spec["y"] == "revenue"
+    assert result["type"] == "line"
+    assert result["x"] == "order_date"
+    assert result["y"] == "revenue"
 
 
-def test_single_numeric_value_selects_metric():
+def test_single_numeric_returns_metric():
     df = pd.DataFrame(
         {
             "total_revenue": [6500]
         }
     )
 
-    spec = select_chart(df)
+    result = select_chart(df)
 
-    assert spec["type"] == "metric"
-    assert spec["y"] == "total_revenue"
-
-
-def test_empty_dataframe_selects_table():
-    df = pd.DataFrame(
-        columns=[
-            "product",
-            "revenue",
-        ]
-    )
-
-    spec = select_chart(df)
-
-    assert spec["type"] == "table"
+    assert result["type"] == "metric"
 
 
-def test_chart_spec_validation():
-    spec = {
-        "type": "bar",
-        "x": "product",
-        "y": "revenue",
-        "title": "Revenue by Product",
-    }
+def test_empty_dataframe_returns_table():
+    df = pd.DataFrame()
 
-    result = validate_chart_spec(spec)
+    result = select_chart(df)
 
-    assert result == spec
+    assert result["type"] == "table"

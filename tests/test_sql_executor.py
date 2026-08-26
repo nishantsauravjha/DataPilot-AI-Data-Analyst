@@ -1,21 +1,37 @@
-from backend.sql.executor import execute_query
+from decimal import Decimal
+
+import pandas as pd
+
+from backend.sql.executor import _normalize_dataframe_types
 
 
-def test_execute_select_query():
-    sql = """
-        SELECT
-            product_name,
-            SUM(revenue) AS total_revenue
-        FROM uploaded_data."a189e9d77013400581d4fb59fb6d1784_sales"
-        GROUP BY product_name
-        ORDER BY total_revenue DESC
-    """
+def test_decimal_columns_are_normalized_to_numeric():
 
-    result = execute_query(sql)
+    dataframe = pd.DataFrame(
+        {
+            "product_name": [
+                "iPhone",
+                "MacBook",
+            ],
+            "total_revenue": [
+                Decimal("1000.50"),
+                Decimal("2500.75"),
+            ],
+        }
+    )
 
-    assert not result.empty
-    assert "product_name" in result.columns
-    assert "total_revenue" in result.columns
+    result = _normalize_dataframe_types(
+        dataframe
+    )
 
-    assert result.iloc[0]["product_name"] == "MacBook"
-    assert result.iloc[0]["total_revenue"] == 6500
+    assert pd.api.types.is_numeric_dtype(
+        result["total_revenue"]
+    )
+
+    assert result[
+        "total_revenue"
+    ].iloc[0] == 1000.50
+
+    assert result[
+        "total_revenue"
+    ].iloc[1] == 2500.75

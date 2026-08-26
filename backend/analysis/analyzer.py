@@ -51,29 +51,39 @@ def _detect_column_types(
 ) -> dict[str, list[str]]:
     """
     Detect useful column categories for downstream analysis.
+
+    Explicitly handles Pandas string, categorical, boolean,
+    numeric, and datetime dtypes without relying on
+    select_dtypes(include="object"), avoiding Pandas 4.x
+    compatibility warnings.
     """
 
-    numeric_columns = [
-        str(column)
-        for column in df.select_dtypes(
-            include="number"
-        ).columns
-    ]
+    numeric_columns: list[str] = []
+    categorical_columns: list[str] = []
+    datetime_columns: list[str] = []
 
-    datetime_columns = [
-        str(column)
-        for column in df.select_dtypes(
-            include=["datetime", "datetimetz"]
-        ).columns
-    ]
+    for column in df.columns:
+        name = str(column)
+        series = df[column]
 
-    categorical_columns = [
-        str(column)
-        for column in df.select_dtypes(
-            include=["object", "str", "category", "bool"]
-        ).columns
-        if column not in datetime_columns
-    ]
+        if pd.api.types.is_bool_dtype(series):
+            categorical_columns.append(name)
+
+        elif pd.api.types.is_datetime64_any_dtype(series):
+            datetime_columns.append(name)
+
+        elif pd.api.types.is_numeric_dtype(series):
+            numeric_columns.append(name)
+
+        elif (
+            pd.api.types.is_string_dtype(series)
+            or pd.api.types.is_object_dtype(series)
+            or isinstance(
+                series.dtype,
+                pd.CategoricalDtype,
+            )
+        ):
+            categorical_columns.append(name)
 
     return {
         "numeric": numeric_columns,
