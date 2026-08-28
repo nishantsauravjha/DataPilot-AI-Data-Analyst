@@ -1,131 +1,187 @@
 from __future__ import annotations
 
-from decimal import Decimal
+from typing import Any
 
 import pandas as pd
 from sqlalchemy import text
 
+from backend.core.config import settings
 from backend.database.connection import engine
 from backend.sql.validator import validate_sql
 
 
-MAX_ROWS = 10000
+MAX_ROWS = settings.SQL_MAX_ROWS
+
+
+class SQLExecutionError(RuntimeError):
+    """Raised when a validated SQL query cannot be executed."""
+
+
+class SQLExplainError(RuntimeError):
+    """Raised when PostgreSQL cannot plan a validated SQL query."""
+
+
+def _validated_sql(sql: str) -> str:
+    """
+    Validate SQL before it reaches PostgreSQL.
+    """
+
+    if not sql or not sql.strip():
+        raise ValueError("SQL cannot be empty.")
+
+    return validate_sql(sql)
+
+
+def explain_query(sql: str) -> dict[str, Any]:
+    """
+    Ask PostgreSQL to plan the query without executing it.
+
+    EXPLAIN is performed only after SQL validation.
+
+    Returns a small structured payload rather than exposing
+    PostgreSQL's complete internal plan to callers.
+    """
+
+    safe_sql = _validated_sql(sql)
+
+    explain_sql = f"""
+    EXPLAIN (FORMAT JSON)
+    {safe_sql}
+    """
+
+    try:
+        with engine.connect() as connection:
+            connection.execute(
+                text(
+                    f"SET LOCAL statement_timeout = "
+                    f"{int(settings.SQL_STATEMENT_TIMEOUT_MS)}"
+                )
+            )
+
+            result = connection.execute(text(explain_sql))
+
+            row = result.fetchone()
+
+            if row is None:
+                raise SQLExplainError(
+                    "PostgreSQL returned an empty EXPLAIN plan."
+                )
+
+            raw_plan = row[0]
+
+            return {
+                "valid": True,
+                "plan_available": True,
+                "plan": raw_plan,
+            }
+
+    except Exception as exc:
+        raise SQLExplainError(
+            f"SQL EXPLAIN failed: {exc}"
+        ) from exc
+
+
+def execute_query(sql: str) -> pd.DataFrame:
+    """
+    Validate and execute a read-only SQL query.
+
+    A statement timeout is applied for safety.
+
+    Returns:
+        Pandas DataFrame containing at most MAX_ROWS rows.
+    """
+
+    safe_sql = _validated_sql(sql)
+
+    try:
+        with engine.connect() as connection:
+            connection.execute(
+                text(
+                    f"SET LOCAL statement_timeout = "
+                    f"{int(settings.SQL_STATEMENT_TIMEOUT_MS)}"
+                )
+            )
+
+            result = connection.execute(
+                text(safe_sql)
+            )
+
+            rows = result.fetchmany(MAX_ROWS)
+
+            dataframe = pd.DataFrame(
+                rows,
+                columns=result.keys(),
+            )
+
+            return _normalize_dataframe_types(dataframe)
+
+    except Exception as exc:
+        raise SQLExecutionError(
+            f"SQL execution failed: {exc}"
+        ) from exc
 
 
 def _normalize_dataframe_types(
     dataframe: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Normalize SQLAlchemy/PostgreSQL scalar types into
-    predictable Pandas dtypes.
+    Normalize PostgreSQL values into useful Pandas dtypes.
 
-    PostgreSQL aggregate functions such as SUM() can
-    return Decimal values. Pandas stores Decimal columns
-    as object dtype, which prevents downstream analysis
-    and visualization from recognizing them as numeric.
+    PostgreSQL NUMERIC/DECIMAL values commonly arrive as
+    Decimal objects and therefore appear as object dtype.
+    This converts numeric-like columns into real numeric
+    Pandas dtypes.
 
-    This function converts Decimal-only numeric columns
-    into float64 while preserving genuine strings,
-    dates, booleans, and other values.
+    Datetime-like object columns are also normalized where
+    conversion is unambiguous.
     """
 
-    if dataframe.empty:
-        return dataframe
+    dataframe = dataframe.copy()
 
-    result = dataframe.copy()
+    for column in dataframe.columns:
+        series = dataframe[column]
 
-    for column in result.columns:
-
-        series = result[column]
-
-        # Already numeric: nothing to do.
-        if pd.api.types.is_numeric_dtype(series):
-            continue
-
-        # Already datetime: preserve it.
-        if pd.api.types.is_datetime64_any_dtype(
-            series
-        ):
-            continue
-
-        non_null = series.dropna()
-
-        if non_null.empty:
+        if series.empty:
             continue
 
         # ----------------------------------------------------
-        # PostgreSQL NUMERIC / DECIMAL
+        # Numeric normalization
         # ----------------------------------------------------
-
-        if all(
-            isinstance(value, Decimal)
-            for value in non_null
-        ):
-            result[column] = pd.to_numeric(
+        #
+        # PostgreSQL NUMERIC/DECIMAL values can arrive as
+        # Decimal objects inside an object-dtype Series.
+        #
+        if series.dtype == "object":
+            numeric = pd.to_numeric(
                 series,
                 errors="coerce",
             )
 
-            continue
+            if numeric.notna().all():
+                dataframe[column] = numeric
+                continue
 
         # ----------------------------------------------------
-        # Mixed numeric values
+        # Datetime normalization
         # ----------------------------------------------------
 
-        if all(
-            isinstance(
-                value,
-                (
-                    int,
-                    float,
-                    Decimal,
-                ),
-            )
-            for value in non_null
-        ):
-            result[column] = pd.to_numeric(
-                series,
-                errors="coerce",
-            )
+        if series.dtype == "object":
+            try:
+                parsed = pd.to_datetime(
+                    series,
+                    errors="raise",
+                )
 
-            continue
+                if not parsed.isna().all():
+                    dataframe[column] = parsed
 
-    return result
+            except (TypeError, ValueError):
+                pass
+
+    return dataframe
 
 
-def execute_query(
-    sql: str,
-) -> pd.DataFrame:
-    """
-    Validate and execute a read-only SQL query.
-
-    Returns:
-        A Pandas DataFrame with normalized SQL types.
-
-    Notes:
-        - SQL is validated before execution.
-        - Maximum returned rows are capped at MAX_ROWS.
-        - PostgreSQL Decimal values are normalized into
-          numeric Pandas dtypes for analysis/charting.
-    """
-
-    safe_sql = validate_sql(sql)
-
-    with engine.connect() as connection:
-
-        result = connection.execute(
-            text(safe_sql)
-        )
-
-        rows = result.fetchmany(
-            MAX_ROWS
-        )
-
-        dataframe = pd.DataFrame(
-            rows,
-            columns=result.keys(),
-        )
-
-    return _normalize_dataframe_types(
-        dataframe
-    )
+# Backward-compatible internal alias.
+#
+# Some existing code may already use the shorter helper name.
+_normalize_dataframe = _normalize_dataframe_types

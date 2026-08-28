@@ -156,22 +156,31 @@ def _validate_generation_result(
         )
 
     sql = result["sql"]
-
     explanation = result["explanation"]
-
     confidence = result["confidence"]
+
+    # --------------------------------------------------------
+    # Validate SQL
+    # --------------------------------------------------------
 
     if not isinstance(sql, str) or not sql.strip():
         raise ValueError(
             "Generated SQL is empty."
         )
 
+    # --------------------------------------------------------
+    # Validate explanation
+    # --------------------------------------------------------
+
     if not isinstance(explanation, str):
         raise ValueError(
             "SQL explanation must be a string."
         )
 
-    # Normalize confidence to a float.
+    # --------------------------------------------------------
+    # Normalize confidence
+    # --------------------------------------------------------
+
     try:
         confidence = float(confidence)
 
@@ -180,7 +189,7 @@ def _validate_generation_result(
             "SQL confidence must be numeric."
         ) from exc
 
-    # Keep confidence within the expected range.
+    # Keep confidence within expected range.
     confidence = max(
         0.0,
         min(1.0, confidence),
@@ -209,6 +218,10 @@ def generate_sql(
     validation layer before execution.
     """
 
+    # --------------------------------------------------------
+    # Input validation
+    # --------------------------------------------------------
+
     if not isinstance(question, str):
         raise TypeError(
             "Question must be a string."
@@ -232,24 +245,30 @@ def generate_sql(
             "Schema context cannot be empty."
         )
 
+    # --------------------------------------------------------
+    # User prompt
+    # --------------------------------------------------------
+
     user_prompt = f"""
 DATABASE SCHEMA
 ===============
 
 {schema}
 
-
 USER QUESTION
 =============
 
 {question}
-
 
 Generate the safest correct PostgreSQL query for
 the user's question using ONLY the schema above.
 
 Return JSON only.
 """
+
+    # --------------------------------------------------------
+    # OpenAI request
+    # --------------------------------------------------------
 
     try:
         response = client.chat.completions.create(
@@ -271,6 +290,10 @@ Return JSON only.
             f"SQL generation request failed: {exc}"
         ) from exc
 
+    # --------------------------------------------------------
+    # Response validation
+    # --------------------------------------------------------
+
     if not response.choices:
         raise RuntimeError(
             "The SQL model returned no choices."
@@ -282,6 +305,187 @@ Return JSON only.
         raise RuntimeError(
             "The SQL model returned an empty response."
         )
+
+    # --------------------------------------------------------
+    # Parse and validate JSON
+    # --------------------------------------------------------
+
+    result = _extract_json(content)
+
+    return _validate_generation_result(result)
+
+
+# ============================================================
+# SQL Correction
+# ============================================================
+
+
+def correct_sql(
+    question: str,
+    schema: str,
+    previous_sql: str,
+    error: str,
+) -> dict[str, Any]:
+    """
+    Ask the model to correct a previously generated SQL query.
+
+    The correction uses the original question, database schema,
+    previous SQL, and the database/validation error.
+    """
+
+    # --------------------------------------------------------
+    # Input validation
+    # --------------------------------------------------------
+
+    if not isinstance(question, str):
+        raise TypeError(
+            "Question must be a string."
+        )
+
+    if not isinstance(schema, str):
+        raise TypeError(
+            "Schema must be a string."
+        )
+
+    if not isinstance(previous_sql, str):
+        raise TypeError(
+            "Previous SQL must be a string."
+        )
+
+    if not isinstance(error, str):
+        raise TypeError(
+            "SQL error must be a string."
+        )
+
+    question = question.strip()
+    schema = schema.strip()
+    previous_sql = previous_sql.strip()
+    error = error.strip()
+
+    if not question:
+        raise ValueError(
+            "Question cannot be empty."
+        )
+
+    if not schema:
+        raise ValueError(
+            "Schema context cannot be empty."
+        )
+
+    if not previous_sql:
+        raise ValueError(
+            "Previous SQL cannot be empty."
+        )
+
+    if not error:
+        raise ValueError(
+            "SQL error cannot be empty."
+        )
+
+    # --------------------------------------------------------
+    # Correction prompt
+    # --------------------------------------------------------
+
+    correction_prompt = f"""
+DATABASE SCHEMA
+===============
+
+{schema}
+
+USER QUESTION
+=============
+
+{question}
+
+PREVIOUS SQL
+============
+
+{previous_sql}
+
+DATABASE / VALIDATION ERROR
+===========================
+
+{error}
+
+Correct the previous SQL query.
+
+IMPORTANT:
+
+- Generate exactly ONE SQL statement.
+- The statement must be read-only.
+- SELECT statements are allowed.
+- WITH ... SELECT statements are allowed.
+- Use PostgreSQL syntax.
+- Use ONLY tables and columns from the supplied schema.
+- Do not invent tables.
+- Do not invent columns.
+- Do not generate INSERT.
+- Do not generate UPDATE.
+- Do not generate DELETE.
+- Do not generate DROP.
+- Do not generate ALTER.
+- Do not generate CREATE.
+- Do not generate TRUNCATE.
+- Do not generate GRANT.
+- Do not generate REVOKE.
+- Do not generate MERGE.
+- Do not generate CALL or EXEC.
+- Do not generate multiple SQL statements.
+
+Return ONLY valid JSON.
+
+Required format:
+
+{{
+    "sql": "SELECT ...",
+    "explanation": "Brief explanation of the correction.",
+    "confidence": 0.95
+}}
+"""
+
+    # --------------------------------------------------------
+    # OpenAI request
+    # --------------------------------------------------------
+
+    try:
+        response = client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT,
+                },
+                {
+                    "role": "user",
+                    "content": correction_prompt,
+                },
+            ],
+        )
+
+    except Exception as exc:
+        raise RuntimeError(
+            f"SQL correction request failed: {exc}"
+        ) from exc
+
+    # --------------------------------------------------------
+    # Response validation
+    # --------------------------------------------------------
+
+    if not response.choices:
+        raise RuntimeError(
+            "The SQL correction model returned no choices."
+        )
+
+    content = response.choices[0].message.content
+
+    if not content:
+        raise RuntimeError(
+            "The SQL correction model returned an empty response."
+        )
+
+    # --------------------------------------------------------
+    # Parse and validate JSON
+    # --------------------------------------------------------
 
     result = _extract_json(content)
 

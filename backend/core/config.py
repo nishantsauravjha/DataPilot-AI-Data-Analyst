@@ -62,6 +62,9 @@ class Settings(BaseSettings):
 
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     RAG_TOP_K: int = 5
+    RAG_MIN_SCORE: float = 0.20
+    RAG_CANDIDATE_K: int = 15
+    RAG_OVERLAP_THRESHOLD: float = 0.80
     CHUNK_SIZE: int = 800
     CHUNK_OVERLAP: int = 120
 
@@ -72,6 +75,16 @@ class Settings(BaseSettings):
     QDRANT_URL: str = "http://127.0.0.1:6333"
     QDRANT_API_KEY: str | None = None
     QDRANT_COLLECTION: str = "datapilot_knowledge"
+
+
+    # --------------------------------------------------------
+    # SQL execution / production query quality
+    # --------------------------------------------------------
+
+    SQL_EXPLAIN_ENABLED: bool = True
+    SQL_MAX_RETRIES: int = 1
+    SQL_STATEMENT_TIMEOUT_MS: int = 15000
+    SQL_MAX_ROWS: int = 10000
 
     # --------------------------------------------------------
     # Existing database connection compatibility

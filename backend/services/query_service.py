@@ -13,14 +13,6 @@ from backend.sql.schema_retriever import get_latest_dataset_schema
 
 
 def _json_safe(value: Any) -> Any:
-    """
-    Convert Pandas / NumPy / PostgreSQL values into
-    stable JSON-compatible Python primitives.
-
-    IMPORTANT:
-    This function preserves numeric values as numbers.
-    It does NOT stringify numeric values.
-    """
 
     if value is None:
         return None
@@ -38,20 +30,10 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, Decimal):
         return float(value)
 
-    if isinstance(
-        value,
-        (
-            np.integer,
-        ),
-    ):
+    if isinstance(value, np.integer):
         return int(value)
 
-    if isinstance(
-        value,
-        (
-            np.floating,
-        ),
-    ):
+    if isinstance(value, np.floating):
         value = float(value)
 
         if np.isnan(value) or np.isinf(value):
@@ -63,6 +45,7 @@ def _json_safe(value: Any) -> Any:
         return bool(value)
 
     if isinstance(value, float):
+
         if np.isnan(value) or np.isinf(value):
             return None
 
@@ -92,12 +75,6 @@ def _json_safe(value: Any) -> Any:
 def _clean_dataframe(
     dataframe: pd.DataFrame,
 ) -> pd.DataFrame:
-    """
-    Normalize common SQL result types without converting
-    numeric columns to strings.
-
-    This is deliberately conservative.
-    """
 
     result = dataframe.copy()
 
@@ -105,36 +82,34 @@ def _clean_dataframe(
 
         series = result[column]
 
-        # Preserve actual numeric SQL columns.
-        if pd.api.types.is_numeric_dtype(series):
+        if pd.api.types.is_numeric_dtype(
+            series
+        ):
             continue
 
-        # Preserve datetime columns.
         if pd.api.types.is_datetime64_any_dtype(
             series
         ):
             continue
 
-        # Attempt numeric conversion only when ALL
-        # non-null values are numeric-looking.
-
         if series.dtype == object:
 
             non_null = series.dropna()
 
-            if not non_null.empty:
+            if non_null.empty:
+                continue
 
-                converted = pd.to_numeric(
-                    non_null,
+            converted = pd.to_numeric(
+                non_null,
+                errors="coerce",
+            )
+
+            if converted.notna().all():
+
+                result[column] = pd.to_numeric(
+                    series,
                     errors="coerce",
                 )
-
-                if converted.notna().all():
-
-                    result[column] = pd.to_numeric(
-                        series,
-                        errors="coerce",
-                    )
 
     return result
 
@@ -142,15 +117,10 @@ def _clean_dataframe(
 def execute_dataset_query(
     sql: str,
 ) -> dict[str, Any]:
-    """
-    Execute a validated DataPilot SQL query
-    and return a JSON-safe structured result.
 
-    The DataFrame remains available internally with
-    its original numeric/datetime semantics.
-    """
-
-    dataframe = execute_query(sql)
+    dataframe = execute_query(
+        sql
+    )
 
     dataframe = _clean_dataframe(
         dataframe
@@ -176,10 +146,11 @@ def execute_dataset_query(
 
 
 def get_latest_schema_context() -> str:
-    """
-    Return formatted schema context for the SQL agent.
-    """
 
-    schema = get_latest_dataset_schema()
+    schema = (
+        get_latest_dataset_schema()
+    )
 
-    return format_schema(schema)
+    return format_schema(
+        schema
+    )
