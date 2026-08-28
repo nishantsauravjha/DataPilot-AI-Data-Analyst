@@ -27,28 +27,36 @@ DataPilot hides that complexity behind a natural-language interface while keepin
 
 ### Core idea
 
-```text
-Natural Language
-       ↓
-   Intent Router
-       ↓
- ┌─────┼─────────┐
- ↓     ↓         ↓
-SQL   RAG     Hybrid
- ↓     ↓         ↓
-PostgreSQL   Qdrant
- └─────┼─────────┘
-       ↓
-   LLM Synthesis
-       ↓
- Answer + Insights
-       ↓
-Analysis + Citations
-       ↓
- Visualization
-```
+## 🏗️ DataPilot Architecture
 
----
+```mermaid
+flowchart TD
+    A["🖥️ Streamlit Frontend"] --> B["⚡ FastAPI"]
+    B --> C["🔀 Query Router"]
+
+    C --> D["📊 Structured"]
+    C --> E["🔎 RAG"]
+    C --> F["🔗 Hybrid"]
+
+    D --> G["🐘 PostgreSQL"]
+    E --> H["🔷 Qdrant"]
+    F --> I["🐘 PostgreSQL + 🔷 Qdrant"]
+
+    G --> J["🤖 LLM Synthesis"]
+    H --> J
+    I --> J
+
+    J --> K["💬 Answer"]
+    J --> L["📈 Analysis"]
+    J --> M["📚 Citations"]
+
+    L --> N["📊 Visualization"]
+
+    K --> O["🖥️ Streamlit"]
+    L --> O
+    M --> O
+    N --> O
+```
 
 # 🚀 Key Capabilities
 
@@ -83,22 +91,34 @@ Analysis + Citations
 
 Questions that require both structured facts and document context can use the hybrid pipeline:
 
-```text
-Question
-   ↓
-Router
-   ↓
- ┌───────────────┬────────────────┐
- │               │                │
- SQL             RAG              │
- │               │                │
- PostgreSQL      Qdrant            │
- │               │                │
- └───────────────┴────────────────┘
-                 ↓
-          LLM Synthesis
-                 ↓
-        Evidence-backed answer
+### 🔀 Hybrid Query Flow
+
+```mermaid
+flowchart TD
+    A["User Question"] --> B["Query Router"]
+
+    B --> C["Structured Component"]
+    B --> D["Unstructured Component"]
+
+    C --> E["Generate SQL"]
+    E --> F["Validate SQL"]
+    F --> G["PostgreSQL"]
+    G --> H["Structured Evidence"]
+
+    D --> I["Expand Query"]
+    I --> J["Vector Search"]
+    J --> K["Qdrant"]
+    K --> L["Unstructured Evidence"]
+
+    H --> M["Merge Evidence"]
+    L --> M
+
+    M --> N["LLM Synthesis"]
+    N --> O["Evidence-backed Answer"]
+
+    O --> P["Answer"]
+    O --> Q["Analysis"]
+    O --> R["Citations"]
 ```
 
 ### Production-Oriented Reliability
@@ -400,6 +420,17 @@ DataPilot includes a Streamlit interface designed around a simple analyst workfl
 ```
 
 The UI exposes the important evidence without forcing the user to understand the implementation.
+
+<img width="1280" height="674" alt="image" src="https://github.com/user-attachments/assets/59a93298-c3c7-433e-8775-08d8eaaa074f" />
+
+<img width="1280" height="672" alt="image" src="https://github.com/user-attachments/assets/517ed08b-3a51-42d5-ab8b-143cccbfcd4e" />
+
+<img width="1280" height="675" alt="image" src="https://github.com/user-attachments/assets/04313a29-87a7-4def-9460-4f9cb20ff1f4" />
+
+<img width="1280" height="670" alt="image" src="https://github.com/user-attachments/assets/aa36fab0-8732-4aee-a7f0-57db6f5a2dfd" />
+
+<img width="1280" height="670" alt="image" src="https://github.com/user-attachments/assets/ca175540-7977-4b98-b74c-cf049e9e86aa" />
+
 
 ---
 
